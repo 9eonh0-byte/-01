@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>하루음악 - 위치 & 날씨 맞춤 AI 캘린더</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Noto Sans KR', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #a8c0ff 0%, #3f2b96 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Noto Sans KR', sans-serif;
+            transition: background 1.2s ease;
+            overflow: hidden;
+        }
+
+        /* Mobile Phone Viewport Frame */
+        .phone-frame {
+            width: 100%;
+            max-width: 430px;
+            height: 92vh;
+            max-height: 890px;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-radius: 40px;
+            border: 8px solid rgba(255, 255, 255, 0.65);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: border-color 0.8s ease, background 0.8s ease;
+        }
+
+        /* Full Overlay Canvas for Tap/Click Vibe Particles */
+        #particleCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 99;
+        }
+
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 10px;
+        }
+
+        /* Calendar Grid Highlight */
+        .calendar-day-selected {
+            background: var(--theme-primary, #2563eb) !important;
+            color: white !important;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+        }
+
+        /* Dynamic Theme Card Style */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            transition: background 0.8s ease, border-color 0.8s ease;
+        }
+
+        .theme-accent-bg {
+            background-color: var(--theme-primary, #2563eb) !important;
+            transition: background-color 0.8s ease;
+        }
+
+        .theme-accent-text {
+            color: var(--theme-primary, #2563eb) !important;
+            transition: color 0.8s ease;
+        }
+
+        .theme-border {
+            border-color: var(--theme-primary, #2563eb) !important;
+            transition: border-color 0.8s ease;
+        }
+    </style>
+</head>
+<body class="p-2 sm:p-4">
+
+    <!-- Mobile Frame Container -->
+    <div class="phone-frame" id="phoneFrame">
+        
+        <!-- Interactive Fullscreen Particle Overlay -->
+        <canvas id="particleCanvas"></canvas>
+
+        <!-- Header: Real-Time Location & Weather Controls -->
+        <header class="pt-5 px-5 pb-3 bg-white/50 border-b border-white/40 flex justify-between items-center z-10 gap-2">
+            <div>
+                <!-- Location Selector -->
+                <div class="relative inline-block">
+                    <select id="locationSelect" onchange="updateContext()" class="theme-accent-bg text-white text-[11px] font-bold rounded-full px-2.5 py-1 focus:outline-none shadow-sm cursor-pointer border-none">
+                        <option value="KR">🇰🇷 대한민국 (KR)</option>
+                        <option value="UK">🇬🇧 영국 (UK)</option>
+                        <option value="JP">🇯🇵 일본 (JP)</option>
+                        <option value="IN">🇮🇳 인도 (IN)</option>
+                        <option value="US">🇺🇸 미국 (US)</option>
+                        <option value="FR">🇫🇷 프랑스 (FR)</option>
+                    </select>
+                </div>
+                <h1 class="text-lg font-extrabold text-slate-800 mt-1">하루음악 캘린더</h1>
+            </div>
+            
+            <!-- Weather Simulator Dropdown -->
+            <div class="relative">
+                <select id="weatherSelect" onchange="updateContext()" class="bg-white/90 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm cursor-pointer">
+                    <option value="Sunny">☀️ 맑음</option>
+                    <option value="Rainy">🌧️ 비</option>
+                    <option value="Snowy">❄️ 눈</option>
+                    <option value="Cloudy">☁️ 흐림</option>
+                    <option value="Cold">🥶 쌀쌀함</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Main Scrollable Area -->
+        <main class="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar space-y-4">
+            
+            <!-- 1. Interactive Calendar View -->
+            <section class="glass-card rounded-3xl p-4 shadow-sm">
+                <!-- Month Navigation Header -->
+                <div class="flex justify-between items-center mb-3">
+                    <button onclick="changeMonth(-1)" class="w-8 h-8 rounded-full bg-white/80 text-slate-600 flex items-center justify-center hover:bg-white shadow-sm transition">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                    </button>
+                    <div class="flex items-center gap-2">
+                        <h2 id="calendarTitle" class="text-base font-bold text-slate-800">2026년 10월</h2>
+                        <button onclick="goToToday()" class="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-semibold transition">오늘</button>
+                    </div>
+                    <button onclick="changeMonth(1)" class="w-8 h-8 rounded-full bg-white/80 text-slate-600 flex items-center justify-center hover:bg-white shadow-sm transition">
+                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                    </button>
+                </div>
+
+                <!-- Days of Week Header -->
+                <div class="grid grid-cols-7 text-center text-xs font-semibold text-slate-400 mb-2">
+                    <span class="text-rose-500">일</span>
+                    <span>월</span>
+                    <span>화</span>
+                    <span>수</span>
+                    <span>목</span>
+                    <span>금</span>
+                    <span class="text-blue-500">토</span>
+                </div>
+
+                <!-- Calendar Days Grid -->
+                <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center text-xs font-medium">
+                    <!-- Dynamic rendering -->
+                </div>
+            </section>
+
+            <!-- 2. Selected Day Schedule Section -->
+            <section class="glass-card rounded-3xl p-4 shadow-sm">
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-4 theme-accent-bg rounded-full"></div>
+                        <h3 class="font-bold text-slate-800 text-xs sm:text-sm">
+                            <span id="selectedDateText">10월 22일</span> 일정
+                        </h3>
+                    </div>
+                    <button onclick="openScheduleModal()" class="text-[11px] theme-accent-bg text-white font-medium px-3 py-1.5 rounded-full shadow-sm transition flex items-center gap-1 hover:opacity-90">
+                        <i class="fa-solid fa-plus text-[9px]"></i> 일정 추가
+                    </button>
+                </div>
+
+                <!-- Schedule List View -->
+                <div id="scheduleList" class="space-y-2 max-h-36 overflow-y-auto custom-scrollbar pr-1">
+                    <!-- Schedule items rendered dynamically -->
+                </div>
+            </section>
+
+            <!-- 3. AI Real-Time Location & Weather Music Recommender Card -->
+            <section id="aiCard" class="glass-card rounded-3xl p-4 shadow-sm border-l-4 theme-border bg-gradient-to-br from-white/90 to-blue-50/60">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <span id="locationBadge" class="text-[10px] font-extrabold uppercase tracking-wider theme-accent-text bg-blue-100/70 px-2 py-0.5 rounded-md">🇰🇷 KR Culture AI Context</span>
+                        <h3 class="font-extrabold text-slate-800 text-sm mt-1">위치 & 날씨 맞춤 추천 곡</h3>
+                    </div>
+                    <button onclick="generateSongRecommendation()" class="theme-accent-bg text-white text-xs font-semibold px-3 py-2 rounded-xl shadow-md hover:opacity-90 active:scale-95 transition flex items-center gap-1">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> AI 재추천
+                    </button>
+                </div>
+
+                <!-- AI Decision Reasoning Box -->
+                <div id="aiReasoningBox" class="mt-2 bg-white/80 rounded-2xl p-3 border border-slate-100 text-xs text-slate-600 leading-relaxed shadow-inner">
+                    <p class="font-bold text-slate-700 mb-1 flex items-center gap-1">
+                        <i class="fa-solid fa-brain theme-accent-text"></i> AI 추천 분석 사유:
+                    </p>
+                    <span id="aiReasoningText">사용자의 국가 위치, 당일 날씨, 등록된 일정을 통합 분석 중입니다...</span>
+                </div>
+            </section>
+
+            <!-- 4. Dynamic Audio Player Simulator Card -->
+            <section class="glass-card rounded-3xl p-4 shadow-md bg-slate-900 text-white relative overflow-hidden">
+                <div class="flex items-center gap-3 relative z-10">
+                    <!-- Album Cover Art -->
+                    <div class="relative">
+                        <img id="albumArt" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80" alt="Album Cover" class="w-14 h-14 rounded-2xl object-cover shadow-md transition-transform duration-500">
+                    </div>
+
+                    <!-- Track Metadata -->
+                    <div class="flex-1 min-w-0">
+                        <h4 id="songTitle" class="font-bold text-sm text-white truncate">노래를 불러오는 중...</h4>
+                        <p id="songArtist" class="text-xs text-slate-400 truncate mt-0.5">아티스트</p>
+                        <div class="flex gap-1.5 mt-1">
+                            <span id="countryTag" class="text-[9px] bg-blue-500/30 text-blue-300 font-bold px-2 py-0.5 rounded-full">🇰🇷 K-Pop</span>
+                            <span id="vibeTag" class="text-[9px] bg-slate-700 text-slate-300 font-semibold px-2 py-0.5 rounded-full">#BGM</span>
+                        </div>
+                    </div>
+
+                    <!-- Play/Pause Control -->
+                    <button id="playBtn" onclick="togglePlay()" class="w-11 h-11 rounded-full theme-accent-bg text-white flex items-center justify-center shadow-lg transition active:scale-95">
+                        <i id="playIcon" class="fa-solid fa-play text-sm ml-0.5"></i>
+                    </button>
+                </div>
+
+                <!-- Progress Bar & Sound Wave Canvas -->
+                <div class="mt-4 space-y-1.5 relative z-10">
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden cursor-pointer" onclick="seekAudio(event)">
+                        <div id="audioProgressBar" class="theme-accent-bg h-1.5 rounded-full w-0 transition-all duration-300"></div>
+                    </div>
+                    
+                    <div class="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                        <span id="currentTimeText">0:00</span>
+                        <canvas id="visualizerCanvas" width="80" height="12" class="opacity-60"></canvas>
+                        <span id="durationText">0:30</span>
+                    </div>
+                </div>
+
+                <!-- External Player Links -->
+                <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex justify-between items-center text-[10px] text-slate-400">
+                    <span>외부 음원 듣기</span>
+                    <div class="flex gap-2.5">
+                        <a id="spotifyLink" href="#" target="_blank" class="hover:text-green-400 transition flex items-center gap-1">
+                            <i class="fa-brands fa-spotify"></i> Spotify
+                        </a>
+                        <a id="ytLink" href="#" target="_blank" class="hover:text-red-400 transition flex items-center gap-1">
+                            <i class="fa-brands fa-youtube"></i> YouTube
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Footer Navigation -->
+        <footer class="bg-white/80 border-t border-slate-200/60 px-6 py-3 flex justify-around items-center text-slate-400 text-xs">
+            <button class="flex flex-col items-center gap-1 theme-accent-text font-semibold">
+                <i class="fa-solid fa-calendar-days text-base"></i>
+                <span>달력</span>
+            </button>
+            <button onclick="generateSongRecommendation()" class="flex flex-col items-center gap-1 hover:text-slate-600 transition">
+                <i class="fa-solid fa-compact-disc text-base"></i>
+                <span>AI 추천</span>
+            </button>
+            <button onclick="alert('마이페이지 기능 준비 중입니다.')" class="flex flex-col items-center gap-1 hover:text-slate-600 transition">
+                <i class="fa-solid fa-user text-base"></i>
+                <span>마이</span>
+            </button>
+        </footer>
+
+    </div>
+
+    <!-- Modal: Add Schedule Event -->
+    <div id="scheduleModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-sm">새 일정 추가</h3>
+                <button onclick="closeScheduleModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="scheduleForm" onsubmit="saveSchedule(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">일정 제목</label>
+                    <input type="text" id="scheduleTitle" required placeholder="예: 팀 프로젝트, 운동, 여행" class="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">시간</label>
+                        <input type="time" id="scheduleTime" required class="w-full text-xs px-2 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">카테고리</label>
+                        <select id="scheduleCategory" class="w-full text-xs px-2 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="Work">💼 업무/공부</option>
+                            <option value="Exam">📝 시험/발표</option>
+                            <option value="Rest">🌿 휴식/힐링</option>
+                            <option value="Workout">🏋️ 운동</option>
+                            <option value="Date">❤️ 데이트</option>
+                            <option value="Travel">✈️ 여행</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex gap-2">
+                    <button type="button" onclick="closeScheduleModal()" class="flex-1 py-2 text-xs font-semibold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200 transition">취소</button>
+                    <button type="submit" class="flex-1 py-2 text-xs font-semibold text-white theme-accent-bg rounded-xl hover:opacity-90 transition shadow-sm">저장하기</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Application Script Logic -->
+    <script>
+        // --- 1. Global Application State ---
+        let currentDate = new Date(2026, 9, 22); // October 22, 2026
+        let selectedDateKey = "2026-10-22";
+        let currentLocation = "KR"; // Default: South Korea
+        let currentWeather = "Sunny";
+        let currentVibeType = "energetic"; // 'energetic', 'sad', 'lofi', 'focus'
+        
+        let schedules = {
+            "2026-10-22": [
+                { id: 1, title: "글로벌 모바일 앱 발표 준비", time: "14:00", category: "Exam", completed: false },
+                { id: 2, title: "야간 런닝 운동", time: "20:00", category: "Workout", completed: true }
+            ],
+            "2026-10-24": [
+                { id: 3, title: "주말 카페 힐링", time: "15:00", category: "Rest", completed: false }
+            ]
+        };
+
+        // --- 2. Country & Multi-Cultural Music Database with Vibe Type ---
+        const countrySongDatabase = [
+            // 🇰🇷 South Korea (KR)
+            {
+                country: "KR",
+                countryName: "대한민국",
+                title: "비가 오면 생각나는 인디 감성",
+                artist: "K-Indie Acoustic Trio",
+                vibe: "#K-Indie #빗소리감성",
+                vibeType: "sad", // Sad / Emotional
+                cover: "https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=200&auto=format&fit=crop&q=80",
+                category: "Rest", weather: "Rainy",
+                reason: "대한민국에 위치하고 있으며 비가 내리고 있네요. 감성적인 K-Indie 슬로우 멜로디가 가슴을 촉촉하게 적셔줍니다."
+            },
+            {
+                country: "KR",
+                countryName: "대한민국",
+                title: "화창한 날의 K-Pop 에너자이저",
+                artist: "K-Pop Hit Makers",
+                vibe: "#K-Pop #자신감상승",
+                vibeType: "energetic", // Happy / Energetic
+                cover: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=200&auto=format&fit=crop&q=80",
+                category: "Exam", weather: "Sunny",
+                reason: "중요한 일정과 맑은 한국의 날씨가 만났습니다! 신나는 K-Pop 폭발적인 비트가 분위기를 끌어올립니다."
+            },
+            {
+                country: "KR",
+                countryName: "대한민국",
+                title: "시티 한강 야간 런닝 BGM",
+                artist: "Seoul Synth Wave",
+                vibe: "#한강러닝 #K-Beat",
+                vibeType: "energetic",
+                cover: "https://images.unsplash.com/photo-1534258936925-c58bed479fcb?w=200&auto=format&fit=crop&q=80",
+                category: "Workout", weather: "Any",
+                reason: "대한민국의 도심 속 운동 일정입니다. 파워풀한 130BPM의 K-Electronic 비트로 러닝 페이스를 유지해보세요."
+            },
+
+            // 🇬🇧 United Kingdom (UK)
+            {
+                country: "UK",
+                countryName: "영국",
+                title: "Rainy London Britpop Melancholy",
+                artist: "UK Indie Rockers",
+                vibe: "#Britpop #LondonVibe",
+                vibeType: "sad",
+                cover: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=200&auto=format&fit=crop&q=80",
+                category: "Rest", weather: "Rainy",
+                reason: "영국의 클래식한 런던 비 내리는 날씨를 반영했습니다. 아련한 브릿팝 기타 선율이 비 내리는 창밖 감성과 어우러집니다."
+            },
+            {
+                country: "UK",
+                countryName: "영국",
+                title: "Sunny Park Acoustic Chill",
+                artist: "Bristol Folk Singer",
+                vibe: "#UKFolk #SunnyPark",
+                vibeType: "lofi", // Chill / Lofi
+                cover: "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=200&auto=format&fit=crop&q=80",
+                reason: "영국의 화창한 하이드 파크 산책에 잘 어울리는 편안하고 따스한 브리티시 어쿠스틱 트랙입니다."
+            },
+
+            // 🇯🇵 Japan (JP)
+            {
+                country: "JP",
+                countryName: "일본",
+                title: "Midnight Tokyo City Pop Drive",
+                artist: "Shibuya Sound Project",
+                vibe: "#CityPop #J-Pop",
+                vibeType: "energetic",
+                cover: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=200&auto=format&fit=crop&q=80",
+                reason: "일본 세션의 감성을 담아 80년대 시티팝 펑키 비트를 추천합니다. 도심의 네온사인과 환상적인 조화를 이룹니다."
+            },
+            {
+                country: "JP",
+                countryName: "일본",
+                title: "Rainy Cafe Lo-Fi Anime OST",
+                artist: "Kyoto Piano Beats",
+                vibe: "#AnimeOST #LoFiPiano",
+                vibeType: "focus", // Focus / Study
+                cover: "https://images.unsplash.com/photo-1528164344705-47542687990d?w=200&auto=format&fit=crop&q=80",
+                category: "Exam", weather: "Rainy",
+                reason: "비 내리는 일본의 고즈넉한 카페 분위기에서 몰입 일정을 진행하기 위한 차분한 피아노 BGM입니다."
+            },
+
+            // 🇮🇳 India (IN)
+            {
+                country: "IN",
+                countryName: "인도",
+                title: "Chai & Sitar Sunset Chill Out",
+                artist: "New Delhi Acoustic Fusion",
+                vibe: "#IndianChill #SitarVibe",
+                vibeType: "lofi",
+                cover: "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=200&auto=format&fit=crop&q=80",
+                reason: "인도의 이국적이고 매혹적인 시타르(Sitar) 선율과 앰비언트 비트가 깊은 평온함을 안겨줍니다."
+            },
+            {
+                country: "IN",
+                countryName: "인도",
+                title: "Bollywood High Energy Cardio Beat",
+                artist: "Mumbai Dance Beats",
+                vibe: "#BollywoodFit #HighEnergy",
+                vibeType: "energetic",
+                category: "Workout", weather: "Any",
+                reason: "인도 리듬 특유의 흥겨운 볼리우드 댄스 비트로 피로를 단번에 날려버리는 고강도 트랙입니다!"
+            },
+
+            // 🇺🇸 United States (US)
+            {
+                country: "US",
+                countryName: "미국",
+                title: "LA Coast Sunset Pop Vibe",
+                artist: "California West-Coast Crew",
+                vibe: "#USPop #SunsetVibe",
+                vibeType: "energetic",
+                cover: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200&auto=format&fit=crop&q=80",
+                reason: "미국 서부의 따스한 노을빛과 해변 드라이브를 연상시키는 세련된 팝 세션입니다."
+            },
+
+            // Global Ambient
+            {
+                country: "GLOBAL",
+                countryName: "글로벌",
+                title: "Universal Deep Focus Piano Flow",
+                artist: "Global Ambient Master",
+                vibe: "#DeepFocus #GlobalBGM",
+                vibeType: "focus",
+                cover: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80",
+                reason: "전 세계 누구나 몰입할 수 있는 잔잔한 디프 피아노 앰비언트 곡입니다."
+            }
+        ];
+
+        // --- 3. Dynamic Theme Engine (Changes Background & Accent based on Song Vibe) ---
+        const themePresets = {
+            energetic: {
+                bodyBg: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #feada6 100%)",
+                frameBg: "rgba(255, 255, 255, 0.90)",
+                borderColor: "rgba(255, 122, 122, 0.6)",
+                accentColor: "#f43f5e", // Rose pink/red
+            },
+            sad: {
+                bodyBg: "linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #0f172a 100%)",
+                frameBg: "rgba(240, 244, 255, 0.88)",
+                borderColor: "rgba(99, 102, 241, 0.5)",
+                accentColor: "#4f46e5", // Deep indigo
+            },
+            lofi: {
+                bodyBg: "linear-gradient(135deg, #c1dfc4 0%, #deecdd 50%, #b2bec3 100%)",
+                frameBg: "rgba(255, 255, 255, 0.90)",
+                borderColor: "rgba(16, 185, 129, 0.4)",
+                accentColor: "#10b981", // Warm emerald / sage
+            },
+            focus: {
+                bodyBg: "linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)",
+                frameBg: "rgba(255, 255, 255, 0.90)",
+                borderColor: "rgba(14, 165, 233, 0.5)",
+                accentColor: "#0284c7", // Sky blue
+            }
+        };
+
+        function updateThemeByVibe(vibeType) {
+            currentVibeType = vibeType || 'energetic';
+            const preset = themePresets[currentVibeType] || themePresets.energetic;
+
+            document.body.style.background = preset.bodyBg;
+            const frame = document.getElementById('phoneFrame');
+            frame.style.borderColor = preset.borderColor;
+            
+            document.documentElement.style.setProperty('--theme-primary', preset.accentColor);
+            
+            // Re-render UI elements to reflect theme changes
+            renderCalendar();
+        }
+
+        // --- 4. Canvas Vibe Particle Click Feedback System ---
+        class VibeParticleSystem {
+            constructor() {
+                this.canvas = document.getElementById('particleCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.resize();
+
+                window.addEventListener('resize', () => this.resize());
+                
+                // Add click/tap listener to entire phone frame
+                const frame = document.getElementById('phoneFrame');
+                frame.addEventListener('click', (e) => this.spawnParticles(e));
+                frame.addEventListener('touchstart', (e) => {
+                    if (e.touches.length > 0) {
+                        this.spawnParticles(e.touches[0]);
+                    }
+                }, { passive: true });
+
+                this.animate();
+            }
+
+            resize() {
+                const rect = document.getElementById('phoneFrame').getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+            }
+
+            spawnParticles(e) {
+                const rect = document.getElementById('phoneFrame').getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                const count = isPlaying ? 18 : 10;
+
+                for (let i = 0; i < count; i++) {
+                    this.particles.push(this.createParticle(x, y));
+                }
+            }
+
+            createParticle(x, y) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 3 + 1;
+
+                if (currentVibeType === 'energetic') {
+                    // Confetti / Golden Sparkles
+                    return {
+                        x, y,
+                        vx: Math.cos(angle) * (speed * 1.5),
+                        vy: Math.sin(angle) * (speed * 1.5) - 1,
+                        size: Math.random() * 6 + 3,
+                        color: ['#f43f5e', '#fbbf24', '#3b82f6', '#ec4899', '#a855f7'][Math.floor(Math.random() * 5)],
+                        life: 1,
+                        decay: Math.random() * 0.02 + 0.015,
+                        type: 'confetti',
+                        rotation: Math.random() * 360
+                    };
+                } else if (currentVibeType === 'sad') {
+                    // Raindrops / Tears Ripple
+                    return {
+                        x, y,
+                        vx: (Math.random() - 0.5) * 1.2,
+                        vy: Math.random() * 3 + 2, // falling down
+                        size: Math.random() * 3 + 2,
+                        color: 'rgba(147, 197, 253, ',
+                        life: 1,
+                        decay: Math.random() * 0.02 + 0.01,
+                        type: 'rain'
+                    };
+                } else if (currentVibeType === 'lofi') {
+                    // Smooth Pastel Floating Rings
+                    return {
+                        x, y,
+                        vx: Math.cos(angle) * speed * 0.8,
+                        vy: Math.sin(angle) * speed * 0.8,
+                        size: Math.random() * 12 + 6,
+                        color: ['#a7f3d0', '#fbcfe8', '#ddd6fe'][Math.floor(Math.random() * 3)],
+                        life: 1,
+                        decay: 0.015,
+                        type: 'ring'
+                    };
+                } else {
+                    // Focus / Beams Pulse
+                    return {
+                        x, y,
+                        vx: Math.cos(angle) * speed * 2,
+                        vy: Math.sin(angle) * speed * 2,
+                        size: Math.random() * 4 + 2,
+                        color: '#38bdf8',
+                        life: 1,
+                        decay: 0.025,
+                        type: 'beam'
+                    };
+                }
+            }
+
+            animate() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= p.decay;
+
+                    if (p.life <= 0) {
+                        this.particles.splice(i, 1);
+                        continue;
+                    }
+
+                    this.ctx.save();
+                    this.ctx.globalAlpha = p.life;
+
+                    if (p.type === 'confetti') {
+                        this.ctx.fillStyle = p.color;
+                        this.ctx.translate(p.x, p.y);
+                        this.ctx.rotate((p.rotation * Math.PI) / 180);
+                        this.ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    } else if (p.type === 'rain') {
+                        this.ctx.fillStyle = p.color + p.life + ')';
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    } else if (p.type === 'ring') {
+                        this.ctx.strokeStyle = p.color;
+                        this.ctx.lineWidth = 2;
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, p.size * (2 - p.life), 0, Math.PI * 2);
+                        this.ctx.stroke();
+                    } else if (p.type === 'beam') {
+                        this.ctx.strokeStyle = p.color;
+                        this.ctx.lineWidth = 1.5;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(p.x, p.y);
+                        this.ctx.lineTo(p.x - p.vx * 3, p.y - p.vy * 3);
+                        this.ctx.stroke();
+                    }
+
+                    this.ctx.restore();
+                }
+
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        // --- 5. Calendar Engine Functions ---
+        function renderCalendar() {
+            const calendarGrid = document.getElementById('calendarGrid');
+            const calendarTitle = document.getElementById('calendarTitle');
+            calendarGrid.innerHTML = '';
+
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            calendarTitle.innerText = `${year}년 ${month + 1}월`;
+
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            for (let i = 0; i < firstDay; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = "h-8";
+                calendarGrid.appendChild(emptyCell);
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayCell = document.createElement('button');
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                
+                dayCell.innerText = day;
+                dayCell.className = "h-8 w-8 mx-auto rounded-full flex flex-col items-center justify-center transition-all relative hover:bg-slate-200/50 text-slate-700 font-medium";
+
+                if (dateKey === selectedDateKey) {
+                    dayCell.classList.add('calendar-day-selected');
+                }
+
+                if (schedules[dateKey] && schedules[dateKey].length > 0) {
+                    const dot = document.createElement('span');
+                    dot.className = `w-1.5 h-1.5 rounded-full absolute bottom-0.5 ${dateKey === selectedDateKey ? 'bg-white' : 'theme-accent-bg'}`;
+                    dayCell.appendChild(dot);
+                }
+
+                dayCell.onclick = () => selectDate(dateKey, year, month, day);
+                calendarGrid.appendChild(dayCell);
+            }
+        }
+
+        function changeMonth(delta) {
+            currentDate.setMonth(currentDate.getMonth() + delta);
+            renderCalendar();
+        }
+
+        function goToToday() {
+            currentDate = new Date(2026, 9, 22);
+            selectedDateKey = "2026-10-22";
+            document.getElementById('selectedDateText').innerText = "10월 22일";
+            renderCalendar();
+            renderSchedules();
+            generateSongRecommendation();
+        }
+
+        function selectDate(dateKey, year, month, day) {
+            selectedDateKey = dateKey;
+            document.getElementById('selectedDateText').innerText = `${month + 1}월 ${day}일`;
+            renderCalendar();
+            renderSchedules();
+            generateSongRecommendation();
+        }
+
+        // --- 6. Schedule Functions ---
+        function renderSchedules() {
+            const listContainer = document.getElementById('scheduleList');
+            const daySchedules = schedules[selectedDateKey] || [];
+
+            if (daySchedules.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-5 text-slate-400 text-xs font-light">
+                        등록된 일정이 없습니다. 일정을 추가해보세요!
+                    </div>
+                `;
+                return;
+            }
+
+            const categoryIcons = { Work: '💼', Exam: '📝', Rest: '🌿', Workout: '🏋️', Date: '❤️', Travel: '✈️' };
+
+            listContainer.innerHTML = daySchedules.map(item => `
+                <div class="flex items-center justify-between p-2 bg-white/90 rounded-2xl border border-slate-100 shadow-sm">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <button onclick="toggleScheduleComplete(${item.id})" class="text-slate-300 hover:text-blue-600 transition">
+                            <i class="${item.completed ? 'fa-solid fa-circle-check theme-accent-text' : 'fa-regular fa-circle'} text-base"></i>
+                        </button>
+                        <div class="${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}">
+                            <p class="text-xs font-bold truncate">${categoryIcons[item.category] || '📌'} ${item.title}</p>
+                            <span class="text-[10px] text-slate-400 font-mono">${item.time}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteSchedule(${item.id})" class="text-slate-300 hover:text-rose-500 text-xs p-1 transition">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function toggleScheduleComplete(id) {
+            const daySchedules = schedules[selectedDateKey];
+            const item = daySchedules.find(s => s.id === id);
+            if (item) {
+                item.completed = !item.completed;
+                renderSchedules();
+            }
+        }
+
+        function deleteSchedule(id) {
+            schedules[selectedDateKey] = schedules[selectedDateKey].filter(s => s.id !== id);
+            renderSchedules();
+            renderCalendar();
+        }
+
+        function openScheduleModal() {
+            document.getElementById('scheduleModal').classList.remove('hidden');
+        }
+
+        function closeScheduleModal() {
+            document.getElementById('scheduleModal').classList.add('hidden');
+            document.getElementById('scheduleForm').reset();
+        }
+
+        function saveSchedule(e) {
+            e.preventDefault();
+            const title = document.getElementById('scheduleTitle').value;
+            const time = document.getElementById('scheduleTime').value;
+            const category = document.getElementById('scheduleCategory').value;
+
+            if (!schedules[selectedDateKey]) schedules[selectedDateKey] = [];
+            schedules[selectedDateKey].push({ id: Date.now(), title, time, category, completed: false });
+
+            closeScheduleModal();
+            renderCalendar();
+            renderSchedules();
+            generateSongRecommendation();
+        }
+
+        // --- 7. Location & Weather Context Algorithm ---
+        function updateContext() {
+            currentLocation = document.getElementById('locationSelect').value;
+            currentWeather = document.getElementById('weatherSelect').value;
+            generateSongRecommendation();
+        }
+
+        function generateSongRecommendation() {
+            const daySchedules = schedules[selectedDateKey] || [];
+            const countryBadges = { KR: "🇰🇷 KOR", UK: "🇬🇧 UK", JP: "🇯🇵 JPN", IN: "🇮🇳 IND", US: "🇺🇸 USA", FR: "🇫🇷 FRA" };
+            
+            document.getElementById('locationBadge').innerText = `${countryBadges[currentLocation] || '🌐 AI'} Culture Context`;
+
+            let countryMatches = countrySongDatabase.filter(s => s.country === currentLocation);
+            let globalMatches = countrySongDatabase.filter(s => s.country === "GLOBAL");
+
+            let pool = [...countryMatches, ...countryMatches, ...globalMatches]; 
+
+            const hasExam = daySchedules.some(s => s.category === 'Exam');
+            const hasWorkout = daySchedules.some(s => s.category === 'Workout');
+
+            let bestMatch = null;
+
+            if (hasExam) {
+                bestMatch = pool.find(s => s.category === 'Exam') || pool.find(s => s.weather === 'Rainy');
+            } else if (hasWorkout) {
+                bestMatch = pool.find(s => s.category === 'Workout');
+            }
+
+            if (!bestMatch) {
+                bestMatch = pool.find(s => s.weather === currentWeather) || pool[Math.floor(Math.random() * pool.length)];
+            }
+
+            // Update Dynamic Theme Based on Song Vibe
+            updateThemeByVibe(bestMatch.vibeType);
+
+            // Update UI Elements
+            document.getElementById('songTitle').innerText = bestMatch.title;
+            document.getElementById('songArtist').innerText = bestMatch.artist;
+            document.getElementById('vibeTag').innerText = bestMatch.vibe;
+            document.getElementById('countryTag').innerText = `${countryBadges[bestMatch.country] || '🌐 Global'}`;
+            document.getElementById('albumArt').src = bestMatch.cover;
+            document.getElementById('aiReasoningText').innerText = bestMatch.reason;
+
+            // Update Search External Links
+            document.getElementById('spotifyLink').href = `https://open.spotify.com/search/${encodeURIComponent(bestMatch.title + ' ' + bestMatch.artist)}`;
+            document.getElementById('ytLink').href = `https://www.youtube.com/results?search_query=${encodeURIComponent(bestMatch.title + ' ' + bestMatch.artist)}`;
+
+            resetAudioPlayer();
+        }
+
+        // --- 8. Web Audio API Simulator & Visualizer ---
+        let audioCtx = null;
+        let isPlaying = false;
+        let audioTimer = null;
+        let currentProgress = 0;
+
+        function togglePlay() {
+            if (isPlaying) pauseAudio();
+            else playAudio();
+        }
+
+        function playAudio() {
+            isPlaying = true;
+            document.getElementById('playIcon').className = 'fa-solid fa-pause text-sm';
+            document.getElementById('albumArt').classList.add('animate-spin');
+            document.getElementById('albumArt').style.animationDuration = '12s';
+
+            playSynthSound();
+            startCanvasVisualizer();
+
+            audioTimer = setInterval(() => {
+                currentProgress += 1;
+                const progressPercent = (currentProgress / 30) * 100;
+                document.getElementById('audioProgressBar').style.width = `${progressPercent}%`;
+                document.getElementById('currentTimeText').innerText = `0:${String(currentProgress).padStart(2, '0')}`;
+
+                if (currentProgress >= 30) resetAudioPlayer();
+            }, 1000);
+        }
+
+        function pauseAudio() {
+            isPlaying = false;
+            document.getElementById('playIcon').className = 'fa-solid fa-play text-sm ml-0.5';
+            document.getElementById('albumArt').classList.remove('animate-spin');
+            if (audioTimer) clearInterval(audioTimer);
+        }
+
+        function resetAudioPlayer() {
+            pauseAudio();
+            currentProgress = 0;
+            document.getElementById('audioProgressBar').style.width = '0%';
+            document.getElementById('currentTimeText').innerText = '0:00';
+        }
+
+        function seekAudio(e) {
+            const bar = e.currentTarget;
+            const clickPosition = (e.clientX - bar.getBoundingClientRect().left) / bar.offsetWidth;
+            currentProgress = Math.floor(clickPosition * 30);
+            document.getElementById('audioProgressBar').style.width = `${clickPosition * 100}%`;
+            document.getElementById('currentTimeText').innerText = `0:${String(currentProgress).padStart(2, '0')}`;
+        }
+
+        // Audio Spectrum Visualizer
+        function startCanvasVisualizer() {
+            const canvas = document.getElementById('visualizerCanvas');
+            const ctx = canvas.getContext('2d');
+
+            function draw() {
+                if (!isPlaying) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    return;
+                }
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#60a5fa';
+
+                for (let i = 0; i < 8; i++) {
+                    const height = Math.random() * canvas.height;
+                    ctx.fillRect(i * 10, canvas.height - height, 6, height);
+                }
+                setTimeout(() => requestAnimationFrame(draw), 150);
+            }
+            draw();
+        }
+
+        // Web Audio Synthesizer sound effect
+        function playSynthSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                
+                // Pitch based on vibe
+                const freq = currentVibeType === 'energetic' ? 523.25 : (currentVibeType === 'sad' ? 220 : 329.63);
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.0);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 2.0);
+            } catch (e) {
+                console.log(e);
+            }
+        }
+
+        // Init App & Particle Engine
+        window.onload = function () {
+            new VibeParticleSystem();
+            renderCalendar();
+            renderSchedules();
+            generateSongRecommendation();
+        };
+    </script>
+</body>
+</html>
